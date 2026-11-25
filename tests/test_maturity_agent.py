@@ -16,6 +16,7 @@ from maturity.agent import (
     RubricLibrary,
     SemanticAgent,
 )
+from maturity.agent.structured import Finding, JudgeResponse, ToolCall
 from maturity.view import GraphView
 
 
@@ -233,3 +234,59 @@ def test_agent_stops_after_max_tool_rounds():
     )
     assert agent.judge("undocumented_service", [c.id]) == []
     assert len(llm.calls) == 3, "max_tool_rounds=2 -> 最多 3 次调用后必须收口"
+
+
+# ------------------------------------------------------------------ 结构化输出
+class StructuredFakeLLM:
+    """支持原生结构化输出的假模型；一旦回退到 complete_json 就报错。"""
+
+    def __init__(self, responses):
+        self._responses = list(responses)
+        self.calls = []
+
+    def complete_json(self, system: str, user: str):
+        raise AssertionError("支持结构化输出时不应回退到 complete_json")
+
+    def complete_structured(self, system: str, user: str, schema):
+        self.calls.append({"system": system, "user": user})
+        return self._responses.pop(0)
+
+
+def test_agent_prefers_native_structured_output():
+    graph, _a, _b, c = _graph()
+    llm = StructuredFakeLLM([
+        JudgeResponse(
+            findings=[
+                Finding(
+                    statement="文档有 pay-service，代码侧无实现",
+                    node_ids=[c.id],
+                    confidence=0.9,
+                )
+            ]
+        )
+    ])
+    agent = SemanticAgent(GraphView(graph), llm=llm, rubrics=RubricLibrary([_rubric()]))
+    problems = agent.judge("undocumented_service", [c.id])
+
+    assert len(problems) == 1
+    assert problems[0].evidence.nodes == [c.id]
+    assert len(llm.calls) == 1
+
+
+def test_agent_runs_tool_round_with_structured_output():
+    graph, _a, _b, c = _graph()
+    llm = StructuredFakeLLM([
+        JudgeResponse(tool_calls=[ToolCall(name="coverage", args={})]),
+        JudgeResponse(findings=[Finding(statement="证据充分", node_ids=[c.id])]),
+    ])
+    agent = SemanticAgent(
+        GraphView(graph),
+        llm=llm,
+        rubrics=RubricLibrary([_rubric()]),
+        config=AgentConfig(max_tool_rounds=2),
+    )
+    problems = agent.judge("undocumented_service", [c.id])
+
+    assert len(llm.calls) == 2
+    assert "已执行的工具结果" in llm.calls[1]["user"]
+    assert len(problems) == 1

@@ -18,11 +18,14 @@ import json
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from kg_builder.enrichment.llm_client import call_structured
+
 from ..schema import Evidence, Problem
 from ..view import GraphView
 from .context import ContextBuilder, SubgraphContext
 from .evidence import CitationResult, CitationValidator
 from .rubric import Rubric, RubricLibrary
+from .structured import JudgeResponse
 from .tools import GraphTools, ToolSpec
 
 # 单轮最多执行几个工具调用，防止模型一次请求几十个查询
@@ -190,7 +193,9 @@ class SemanticAgent:
                 specs,
                 self.config.max_tool_rounds,
             )
-            payload = self.llm.complete_json(SYSTEM_PROMPT, prompt) or {}
+            # 支持结构化输出的端点直接按 JudgeResponse 约束生成；不支持的端点
+            # 由 call_structured 退化为 JSON + Pydantic 校验，两种路径返回同一形状。
+            payload = call_structured(self.llm, SYSTEM_PROMPT, prompt, JudgeResponse).model_dump()
             calls = payload.get("tool_calls") or []
             if not calls or round_no >= self.config.max_tool_rounds:
                 break
