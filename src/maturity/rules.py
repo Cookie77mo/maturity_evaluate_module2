@@ -228,47 +228,6 @@ def rule_service_without_entry(view: GraphView, cfg: RuleThresholds) -> list[Pro
 
 
 # ------------------------------------------------------------------ 一致性
-def rule_undocumented_service(view: GraphView, cfg: RuleThresholds) -> list[Problem]:
-    """服务在代码里有实现证据，但没有任何文档提到它 → 文档覆盖缺口。
-
-    不依赖"代码采集是否完整"：只问"已经采集到的这个服务，文档里有没有写"，
-    因此不会把采集缺口误判成实现缺失。
-    """
-    coverage = view.coverage()
-    if not coverage.get("has_code") or not coverage.get("has_document"):
-        return []
-
-    documented: set[str] = set()
-    for edge in view.graph.edges:
-        source = view.node(edge.source)
-        target = view.node(edge.target)
-        if source is None or target is None:
-            continue
-        if source.type == "Document" and target.type in ("Service", "API"):
-            documented.add(target.id)
-
-    problems: list[Problem] = []
-    for node in view.find("Service"):
-        if not any(p.source_type == "source_code" for p in node.provenance):
-            continue
-        if node.id in documented:
-            continue
-        problems.append(_problem(
-            view,
-            dimension=Dimension.CONSISTENCY,
-            indicator="undocumented_service",
-            severity=Severity.MEDIUM if view.is_core(node) else Severity.LOW,
-            title="服务缺少文档覆盖",
-            statement=(
-                f"服务 {node.name} 有代码实现证据，但本次采集到的文档没有提到它；"
-                "可能是文档未同步更新，也可能是文档采集范围未覆盖该服务。"
-            ),
-            entities=[node.id],
-            confidence=0.8,
-            suggestion="在架构/接口文档中补充该服务的职责、依赖和接口说明；若文档在别处维护，请补充采集配置。",
-            threshold_limit=cfg.max_entities,
-        ))
-    return problems
 
 
 _VALUE_RE = re.compile(r"=\s*(.*)$")
@@ -457,7 +416,6 @@ RULES: list[Callable[[GraphView, RuleThresholds], list[Problem]]] = [
     rule_fan_in_hotspot,
     rule_long_call_chain,
     rule_service_without_entry,
-    rule_undocumented_service,
     rule_config_conflict,
     rule_observability,
     rule_deployment_replicas,

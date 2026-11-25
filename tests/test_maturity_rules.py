@@ -49,26 +49,6 @@ def test_articulation_point_is_single_point_of_failure():
     assert spof[0].entities == [b.id]
 
 
-def test_undocumented_service_detected():
-    graph = KnowledgeGraph()
-    doc = graph.upsert_node("Document", "architecture.md", provenance=[_prov("document", "docs/architecture.md")])
-    documented = _service(graph, "OrderService")
-    undocumented = _service(graph, "GhostService")
-    graph.upsert_edge(doc.id, documented.id, "DEPENDS_ON",
-                      provenance=[_prov("document", "docs/architecture.md")])
-    result = analyze_graph(graph)
-    found = [p for p in result.problems if p.indicator == "undocumented_service"]
-    assert [p.entities for p in found] == [[undocumented.id]]
-
-
-def test_undocumented_service_skipped_without_documents():
-    """没有采集到任何文档时，"文档没提到"没有意义，不能逐服务刷问题。"""
-    graph = KnowledgeGraph()
-    _service(graph, "OrderService")
-    result = analyze_graph(graph)
-    assert "undocumented_service" not in _indicators(result)
-
-
 def test_single_replica_detected_via_routes_to_edge():
     """模块一文档解析器用 DEPENDS_ON + kind=routes_to 表示 Service→Deployment。"""
     graph = KnowledgeGraph()

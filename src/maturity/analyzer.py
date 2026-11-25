@@ -63,8 +63,6 @@ class AnalysisResult:
             lines.append("提示: 图谱中没有部署数据，副本/探针类规则未生效。")
         if not self.coverage.get("has_runtime"):
             lines.append("提示: 图谱中没有运行时指标，可观测性仅能报告采集缺口。")
-        if not self.coverage.get("has_code"):
-            lines.append("提示: 图谱中没有代码采集证据，文档覆盖率规则未生效。")
         if top:
             lines.append("")
             for problem in self.problems[:top]:
